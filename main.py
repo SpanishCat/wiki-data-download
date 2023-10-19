@@ -7,6 +7,7 @@ import time
 import schedule
 import urllib.parse
 import urllib.request
+import urllib.error
 
 from datetime import date, timedelta
 from typing import Final as Const
@@ -49,8 +50,8 @@ def get_page_data(article_name_: str, end_date: str, start_date: str = START_DAT
 
     try:
         page = urllib.request.urlopen(url).read()
-    except Exception as exception:
-        print(f"Error reading {url}: {exception}")
+    except urllib.error.URLError:
+        print("Update failed, No internet connection")
         return
 
     page = page.decode("UTF-8")
@@ -65,6 +66,9 @@ def update_daily_data():
     for article in articles:
         article_name, article_lang = article
         article_page_data = get_page_data(article_name, yesterday, lang=article_lang)
+
+        if article_page_data is None:
+            break
 
         if not os.path.exists(OUT_DIR + article_name):
             os.makedirs(OUT_DIR + article_name)
