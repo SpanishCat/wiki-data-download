@@ -13,6 +13,7 @@ import urllib.error
 
 from datetime import date, timedelta
 from typing import Final as Const
+from shutil import rmtree
 
 
 # region Config
@@ -30,6 +31,13 @@ KEYWORDS_FILENAME: Const = "keywords.txt"
 
 # Global
 keywords_dict = dict()
+
+
+def clean_folder(directory: str):
+    if not os.path.exists(directory): raise FileNotFoundError(f"Path {directory} does not exist")
+    if not os.walk(directory): raise Exception(f"Folder {directory} is empty!")
+
+    rmtree(directory)
 
 
 def to_timestamp(date: date):
@@ -153,6 +161,9 @@ def update_daily_data():
     start_date = to_timestamp(date.today() - timedelta(START_DAYS_AGO))
     yesterday: str = to_timestamp(date.today() - timedelta(1))
     invalid_name_index = 0
+
+    print("Cleaning output folder")
+    clean_folder(OUT_DIR)
 
     print("Building a collection of relevant articles:")
     keywords_dict.clear()
