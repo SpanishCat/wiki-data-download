@@ -28,6 +28,10 @@ KEYWORDS_FILENAME: Const = "keywords.txt"
 # end region
 
 
+# Global
+keywords_dict = dict()
+
+
 def to_timestamp(date: date):
     return f"{date.year}{date.month}{date.day}"
 
@@ -70,9 +74,10 @@ def get_pageid_dict_for(titles: iter, titles_per_request: int = 40) -> dict[str:
         return out_dict
 
 
-def pageid_to_wikipedia_page(id_: str) -> wiki.WikipediaPage:
+def id_to_page(id_: str) -> wiki.WikipediaPage:
     try:
-        return wiki.page(pageid=id_, auto_suggest=False)
+        # return Page(wiki_page=wiki.page(pageid=id_), keywords=keywords)
+        return wiki.page(pageid=id_)
     except (wiki.PageError, wiki.DisambiguationError) as err:
         print(f"Article was not found, skipping")
 
@@ -80,9 +85,15 @@ def pageid_to_wikipedia_page(id_: str) -> wiki.WikipediaPage:
 def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     # Search keywords in Wikipedia
     article_titles = set()
+
     x = 0
     for request_num, word in enumerate(keywords_):
-        article_titles.add(tuple(wiki.search(word, results=5)))
+        new_titles = tuple(wiki.search(word, results=5))
+        article_titles.add(new_titles)
+
+        # Title->Keyword Dictionary
+        for title in new_titles:
+            keywords_dict[title] = word
 
         if x / len(keywords_) >= 0.01:
             x = 0
@@ -92,7 +103,8 @@ def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
 
         x += 1
 
-    article_titles = set(article for tup in article_titles for article in tup)
+    # Eliminate sub-tuples
+    article_titles = set(title for tup in article_titles for title in tup)
     print(f"\nArticle titles: {article_titles}\n\n")
 
     # Convert Titles to 'WikipediaPage's (Title -> Page ID -> WikipediaPage)
@@ -104,7 +116,7 @@ def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     print(f"{page_ids=}\n")
 
     # Page IDs -> WikipediaPages
-    out_articles = tuple(pageid_to_wikipedia_page(id_) for id_ in page_ids)
+    out_articles = tuple(id_to_page(id_) for id_ in page_ids)
     print(f"{out_articles=}\n")
 
     return out_articles
@@ -143,23 +155,29 @@ def update_daily_data():
     invalid_name_index = 0
 
     print("Building a collection of relevant articles:")
-    articles = find_articles_by_keywords(get_keywords(KEYWORDS_FILENAME))
-    articles = (article for article in articles if article)
-    print("Collection is ready. Extracting stats...")
+    keywords_dict.clear()
+    articles: tuple[wiki.WikipediaPage] = find_articles_by_keywords(get_keywords(KEYWORDS_FILENAME))
+    articles = tuple(article for article in articles if article)
 
+    print("Collection is ready. Extracting stats...")
     for article in articles:
         # Output folder
         # NOTE: It's up here to save time, in case article is being skipped
+        out_filename = article.title
+
         if not os.path.exists(OUT_DIR + article.title):
             try:
                 os.makedirs(OUT_DIR + article.title)
 
             except OSError as err:
                 try:
-                    os.makedirs(OUT_DIR + "INVALID_NAME#" + str(invalid_name_index))
+                    out_filename = f"INVALID_NAME#{invalid_name_index}"
+                    os.makedirs(OUT_DIR + out_filename)
                     invalid_name_index += 1
+
                 except Exception as err:
                     print(f"Folder for article {article.title} could not be created. Skipping. ({err})")
+                    continue
 
             except Exception as err:
                 print(f"Folder for article {article.title} could not be created. Skipping. ({err})")
@@ -179,6 +197,7 @@ def update_daily_data():
             date_stats["language"] = article_lang
             date_stats["url"] = article.url
             date_stats["date"] = date_stats["timestamp"]
+            date_stats["keywords"] = keywords_dict[article.title]
 
             # Remove categories
             del date_stats["granularity"]
@@ -191,7 +210,7 @@ def update_daily_data():
 
         # Output as JSON
         for daily_stats in article_page_data:
-            with open(f"{OUT_DIR + article.title}/{daily_stats['date']}.{OUT_FORMAT}", 'w') as out_file:
+            with open(f"{OUT_DIR + out_filename}/{daily_stats['date']}.{OUT_FORMAT}", 'w') as out_file:
                 json.dump(daily_stats, out_file)
 
         print(f"\nDone: '{article.title}' (data for {len(article_page_data)} dates)")
