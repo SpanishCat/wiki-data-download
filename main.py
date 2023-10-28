@@ -17,7 +17,7 @@ from typing import Final as Const, Any
 # region Config
 # Output
 OUT_FORMAT: Const = "json"
-OUT_DIR: Const = "out_old/"
+OUT_DIR: Const = "out/"
 START_DAYS_AGO: Const = 4  # Update info for every day since x days ago
 RESULTS_PER_KEYWORD: Const = 3
 # START_DATE: Const = "20231001"
@@ -95,6 +95,7 @@ def pageid_to_wikipedia_page(id_: str) -> wiki.WikipediaPage:
 def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     # Search keywords in Wikipedia
     article_titles = set()
+    keyword_dict = dict()
     x = 0
 
     base_title_url = "https://api.wikimedia.org/core/v1/wikipedia/en/search/title"
@@ -102,7 +103,16 @@ def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     articles = []
 
     for word_num, word in enumerate(keywords_):
-        article_titles.add(tuple(wiki.search(word, results=RESULTS_PER_KEYWORD)))
+        results = tuple(wiki.search(word, results=RESULTS_PER_KEYWORD))
+        article_titles.add(results)
+        keyword_dict[word] = results
+
+        if x / len(keywords_) >= 0.01:
+            x = 0
+            print(f"\r- Searching keywords in Wikipedia: {word} ({word_num}/{len(keywords_)}; "
+                  f"{int(word_num / len(keywords_) * 100)}%)",
+                  end="")
+        x += 1
 
         # title_search_results = (
         #     requests.get(
@@ -163,21 +173,16 @@ def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
         #     if page["key"] not in article_titles
         # )
 
-        if x / len(keywords_) >= 0.01:
-            x = 0
-            print(f"\r- Searching keywords in Wikipedia ({word_num}/{len(keywords_)}; "
-                  f"{int(word_num / len(keywords_) * 100)}%)",
-                  end="")
-        x += 1
-
     article_titles = set(article for tup in article_titles for article in tup)
     print(f"\nArticle titles: {article_titles}\n\n")
+    print(f"\n\n{keyword_dict=}")
 
     # Convert Titles to 'WikipediaPage's (Title -> Page ID -> WikipediaPage):
     print("- Converting to 'wikipedia.WikipediaPage' class")
 
     # Titles -> Page IDs
     title_dict = get_pageid_dict_for(article_titles)
+    print(f"{title_dict=}")
     page_ids = tuple(title_dict.values())
     print(f"{page_ids=}\n")
 
@@ -221,6 +226,7 @@ def update_daily_data():
     invalid_name_index = 0
 
     print("Building a collection of relevant articles:")
+    print(f"Keywords: {get_keywords(KEYWORDS_FILENAME)}")
     articles = find_articles_by_keywords(get_keywords(KEYWORDS_FILENAME))
     articles = (article for article in articles if article)
     print("Collection is ready. Extracting stats...")
