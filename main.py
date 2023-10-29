@@ -12,32 +12,35 @@ import urllib.request
 import urllib.error
 
 from datetime import date, timedelta
-from typing import Final as Const
-from shutil import rmtree
-
+from typing import Final as Const, Any
 
 # region Config
 # Output
 OUT_FORMAT: Const = "json"
 OUT_DIR: Const = "out/"
 START_DAYS_AGO: Const = 4  # Update info for every day since x days ago
+RESULTS_PER_KEYWORD: Const = 3
 # START_DATE: Const = "20231001"
 
 # Misc
 UPDATE_TIME: Const = "12:00"
 KEYWORDS_FILENAME: Const = "keywords.txt"
-# end region
 
 
-# Global
-keywords_dict = dict()
+# endregion
 
 
-def clean_folder(directory: str):
-    if not os.path.exists(directory): raise FileNotFoundError(f"Path {directory} does not exist")
-    if not os.walk(directory): raise Exception(f"Folder {directory} is empty!")
+class Article:
+    def __init__(self, id: int, title: str, key: str, url: str = ""):
+        self.id = id
+        self.title = title
+        self.key = key
+        self.url = url
+        self.language: str  # todo
+        self.matched_title: Any  # todo
 
-    rmtree(directory)
+    def __repr__(self):
+        return self.title
 
 
 def to_timestamp(date: date):
@@ -52,7 +55,7 @@ def get_keywords(filename: str) -> set:
     return keywords
 
 
-def pageid_dict_of(titles: iter, titles_per_request: int = 40) -> dict[str: str]:
+def get_pageid_dict_for(titles: iter, titles_per_request: int = 40) -> dict[str: str]:
     """
 
     :param titles: Titles of articles to translate in dict.
@@ -82,10 +85,9 @@ def pageid_dict_of(titles: iter, titles_per_request: int = 40) -> dict[str: str]
         return out_dict
 
 
-def id_to_page(id_: str) -> wiki.WikipediaPage:
+def pageid_to_wikipedia_page(id_: str) -> wiki.WikipediaPage:
     try:
-        # return Page(wiki_page=wiki.page(pageid=id_), keywords=keywords)
-        return wiki.page(pageid=id_)
+        return wiki.page(pageid=id_, auto_suggest=False)
     except (wiki.PageError, wiki.DisambiguationError) as err:
         print(f"Article was not found, skipping")
 
@@ -93,38 +95,99 @@ def id_to_page(id_: str) -> wiki.WikipediaPage:
 def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     # Search keywords in Wikipedia
     article_titles = set()
+    keyword_dict = dict()
     x = 0
 
-    for request_num, word in enumerate(keywords_):
-        new_titles = tuple(wiki.search(word, results=5))
-        article_titles.add(new_titles)
+    base_title_url = "https://api.wikimedia.org/core/v1/wikipedia/en/search/title"
+    base_content_url = "https://api.wikimedia.org/core/v1/wikipedia/en/search/page"
+    articles = []
 
-        # Title->Keyword Dictionary
-        for title in new_titles:
-            keywords_dict[title] = word
+    for word_num, word in enumerate(keywords_):
+        results = tuple(wiki.search(word, results=RESULTS_PER_KEYWORD))
+        article_titles.add(results)
+        keyword_dict[word] = results
 
         if x / len(keywords_) >= 0.01:
             x = 0
-            print(f"\r- Searching keywords in Wikipedia ({request_num}/{len(keywords_)}; "
-                  f"{int(request_num / len(keywords_) * 100)}%)",
+            print(f"\r- Searching keywords in Wikipedia: {word} ({word_num}/{len(keywords_)}; "
+                  f"{int(word_num / len(keywords_) * 100)}%)",
                   end="")
-
         x += 1
 
-    # Eliminate sub-tuples
-    article_titles = set(title for tup in article_titles for title in tup)
-    print(f"\nArticle titles: {article_titles}\n\n")
+        # title_search_results = (
+        #     requests.get(
+        #         base_title_url,
+        #         params={"q": word, "limit": RESULTS_PER_KEYWORD})
+        #         .json()
+        # )
+        # title_search_results = tuple(title_search_results["pages"]) \
+        #     if "pages" in title_search_results \
+        #     else tuple()
+        #
+        # content_search_results = (
+        #     requests.get(
+        #         base_content_url,
+        #         params={"q": word, "limit": RESULTS_PER_KEYWORD})
+        #         .json()
+        # )
+        # content_search_results = tuple(content_search_results["pages"]) \
+        #     if "pages" in content_search_results \
+        #     else tuple()
+        #
+        # if len(title_search_results) == 0 and len(content_search_results) == 0:
+        #     print("skipping")
+        #     continue
+        #
+        # print(f"Title: {tuple(x['title'] for x in title_search_results)}")
+        # print(f"Content: {tuple(x['title'] for x in content_search_results)}")
+        # new_pages = tuple(title_search_results) + tuple(content_search_results)
+        # print(f"{new_pages=}")
+        # new_pages = tuple(
+        #     page for page in new_pages
+        #     if page["key"] not in article_titles)
+        # print(f"{new_pages=}")
+        #
+        # if len(new_pages) == 0:
+        #     print("skipping")
+        #     continue
+        #
+        # new_pages = tuple(
+        #     Article(page["id"], page["title"], page["key"])
+        #     for page in new_pages)
+        # print(f"{new_pages=}")
+        #
+        # article_titles.add(page.key for page in new_pages)
+        # articles += [page.key for page in new_pages]
 
-    # Convert Titles to 'WikipediaPage's (Title -> Page ID -> WikipediaPage)
+
+        # print(f"new articles: {tuple(x['title'] for x in temp_new_articles)}")
+
+        # for page in article_request:
+        #     if page["key"] not in article_titles:
+        #         articles.add(page["key"])
+        #         article_titles.add(page["key"])
+
+        # tuple(
+        #     (articles.add(page["key"]), article_titles.add(page["key"]))
+        #     for page in title_search_results
+        #     if page["key"] not in article_titles
+        # )
+
+    article_titles = set(article for tup in article_titles for article in tup)
+    print(f"\nArticle titles: {article_titles}\n\n")
+    print(f"\n\n{keyword_dict=}")
+
+    # Convert Titles to 'WikipediaPage's (Title -> Page ID -> WikipediaPage):
     print("- Converting to 'wikipedia.WikipediaPage' class")
 
     # Titles -> Page IDs
-    title_dict = pageid_dict_of(article_titles)
+    title_dict = get_pageid_dict_for(article_titles)
+    print(f"{title_dict=}")
     page_ids = tuple(title_dict.values())
     print(f"{page_ids=}\n")
 
     # Page IDs -> WikipediaPages
-    out_articles = tuple(id_to_page(id_) for id_ in page_ids)
+    out_articles = tuple(pageid_to_wikipedia_page(id_) for id_ in page_ids)
     print(f"{out_articles=}\n")
 
     return out_articles
@@ -162,33 +225,25 @@ def update_daily_data():
     yesterday: str = to_timestamp(date.today() - timedelta(1))
     invalid_name_index = 0
 
-    print("Cleaning output folder")
-    clean_folder(OUT_DIR)
-
     print("Building a collection of relevant articles:")
-    keywords_dict.clear()
-    articles: tuple[wiki.WikipediaPage] = find_articles_by_keywords(get_keywords(KEYWORDS_FILENAME))
-    articles = tuple(article for article in articles if article)
-
+    print(f"Keywords: {get_keywords(KEYWORDS_FILENAME)}")
+    articles = find_articles_by_keywords(get_keywords(KEYWORDS_FILENAME))
+    articles = (article for article in articles if article)
     print("Collection is ready. Extracting stats...")
+
     for article in articles:
         # Output folder
         # NOTE: It's up here to save time, in case article is being skipped
-        out_filename = article.title
-
         if not os.path.exists(OUT_DIR + article.title):
             try:
                 os.makedirs(OUT_DIR + article.title)
 
             except OSError as err:
                 try:
-                    out_filename = f"INVALID_NAME#{invalid_name_index}"
-                    os.makedirs(OUT_DIR + out_filename)
+                    os.makedirs(OUT_DIR + "INVALID_NAME#" + str(invalid_name_index))
                     invalid_name_index += 1
-
                 except Exception as err:
                     print(f"Folder for article {article.title} could not be created. Skipping. ({err})")
-                    continue
 
             except Exception as err:
                 print(f"Folder for article {article.title} could not be created. Skipping. ({err})")
@@ -208,7 +263,6 @@ def update_daily_data():
             date_stats["language"] = article_lang
             date_stats["url"] = article.url
             date_stats["date"] = date_stats["timestamp"]
-            date_stats["keywords"] = keywords_dict[article.title]
 
             # Remove categories
             del date_stats["granularity"]
@@ -221,7 +275,7 @@ def update_daily_data():
 
         # Output as JSON
         for daily_stats in article_page_data:
-            with open(f"{OUT_DIR + out_filename}/{daily_stats['date']}.{OUT_FORMAT}", 'w') as out_file:
+            with open(f"{OUT_DIR + article.title}/{daily_stats['date']}.{OUT_FORMAT}", 'w') as out_file:
                 json.dump(daily_stats, out_file)
 
         print(f"\nDone: '{article.title}' (data for {len(article_page_data)} dates)")
