@@ -52,7 +52,7 @@ def get_keywords(filename: str) -> set:
     return keywords
 
 
-def get_pageid_dict_for(titles: iter, titles_per_request: int = 40) -> dict[str: str]:
+def pageid_dict_of(titles: iter, titles_per_request: int = 40) -> dict[str: str]:
     """
 
     :param titles: Titles of articles to translate in dict.
@@ -93,8 +93,8 @@ def id_to_page(id_: str) -> wiki.WikipediaPage:
 def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     # Search keywords in Wikipedia
     article_titles = set()
-
     x = 0
+
     for request_num, word in enumerate(keywords_):
         new_titles = tuple(wiki.search(word, results=5))
         article_titles.add(new_titles)
@@ -119,7 +119,7 @@ def find_articles_by_keywords(keywords_: iter) -> tuple[wiki.WikipediaPage]:
     print("- Converting to 'wikipedia.WikipediaPage' class")
 
     # Titles -> Page IDs
-    title_dict = get_pageid_dict_for(article_titles)
+    title_dict = pageid_dict_of(article_titles)
     page_ids = tuple(title_dict.values())
     print(f"{page_ids=}\n")
 
